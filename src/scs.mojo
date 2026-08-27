@@ -4,7 +4,6 @@ All storage belongs to the caller.  Sparse matrices use SciPy-compatible CSR:
 `indptr[rows + 1]`, `indices[nnz]`, and `data[nnz]`.
 """
 
-from std.algorithm import parallelize
 from std.math import sqrt
 from std.sys.info import simd_width_of as simdwidthof
 
@@ -96,7 +95,8 @@ def csr_matvec(
                 end - first,
             )
 
-    parallelize[work](PARALLEL_TASKS, PARALLEL_TASKS)
+    for task in range(PARALLEL_TASKS):
+        work(task)
 
 
 def csr_matvec32_range(
@@ -140,7 +140,8 @@ def csr_matvec32(
                 end - first,
             )
 
-    parallelize[work](PARALLEL_TASKS, PARALLEL_TASKS)
+    for task in range(PARALLEL_TASKS):
+        work(task)
 
 
 def csr_tmatvec(
@@ -358,7 +359,8 @@ def project_cone_copy(
                     zero + i, max(src.load[width=W](zero + i), zeros)
                 )
 
-        parallelize[work](PARALLEL_TASKS, PARALLEL_TASKS)
+        for task in range(PARALLEL_TASKS):
+            work(task)
 
     var i = vectors * W
     while i < nonnegative:
