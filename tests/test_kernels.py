@@ -151,6 +151,15 @@ def test_malformed_csr_is_rejected_before_ffi():
         mojo_scs.matvec(matrix, np.ones(3))
 
 
+def test_replaced_csr_buffers_invalidate_format_cache():
+    matrix = sparse.eye(3, format="csr", dtype=np.float64)
+    mojo_scs.matvec(matrix, np.ones(3))
+    matrix.indices = matrix.indices.copy()
+    matrix.indices[0] = 9
+    with np.testing.assert_raises(ValueError):
+        mojo_scs.matvec(matrix, np.ones(3))
+
+
 def test_complex_inputs_are_not_silently_narrowed():
     with np.testing.assert_raises(TypeError):
         mojo_scs.matvec(np.eye(2, dtype=complex), np.ones(2))

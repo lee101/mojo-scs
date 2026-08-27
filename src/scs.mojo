@@ -5,6 +5,7 @@ All storage belongs to the caller.  Sparse matrices use SciPy-compatible CSR:
 """
 
 from std.math import sqrt
+from max.algorithm import parallelize
 from std.sys.info import simd_width_of as simdwidthof
 
 comptime W = simdwidthof[DType.float64]()
@@ -95,8 +96,7 @@ def csr_matvec(
                 end - first,
             )
 
-    for task in range(PARALLEL_TASKS):
-        work(task)
+    parallelize[work](PARALLEL_TASKS, PARALLEL_TASKS)
 
 
 def csr_matvec32_range(
@@ -140,8 +140,7 @@ def csr_matvec32(
                 end - first,
             )
 
-    for task in range(PARALLEL_TASKS):
-        work(task)
+    parallelize[work](PARALLEL_TASKS, PARALLEL_TASKS)
 
 
 def csr_tmatvec(
@@ -339,14 +338,32 @@ def project_cone_copy(
         values[zero_i] = 0.0
         zero_i += 1
 
-    var vectors = nonnegative // W
+    var i = 0
     if nonnegative < PARALLEL_VALUES:
-        for vector_i in range(vectors):
-            var i = vector_i * W
+        while i + 4 * W <= nonnegative:
             values.store(
                 zero + i, max(src.load[width=W](zero + i), zeros)
             )
+            values.store(
+                zero + i + W,
+                max(src.load[width=W](zero + i + W), zeros),
+            )
+            values.store(
+                zero + i + 2 * W,
+                max(src.load[width=W](zero + i + 2 * W), zeros),
+            )
+            values.store(
+                zero + i + 3 * W,
+                max(src.load[width=W](zero + i + 3 * W), zeros),
+            )
+            i += 4 * W
+        while i + W <= nonnegative:
+            values.store(
+                zero + i, max(src.load[width=W](zero + i), zeros)
+            )
+            i += W
     else:
+        var vectors = nonnegative // W
         var chunk_size = (vectors + PARALLEL_TASKS - 1) // PARALLEL_TASKS
 
         @parameter
@@ -359,10 +376,9 @@ def project_cone_copy(
                     zero + i, max(src.load[width=W](zero + i), zeros)
                 )
 
-        for task in range(PARALLEL_TASKS):
-            work(task)
+        parallelize[work](PARALLEL_TASKS, PARALLEL_TASKS)
+        i = vectors * W
 
-    var i = vectors * W
     while i < nonnegative:
         values[zero + i] = max(src[zero + i], 0.0)
         i += 1

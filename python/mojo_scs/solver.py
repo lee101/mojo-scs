@@ -90,6 +90,18 @@ def _vector(value: Any, length: int, name: str) -> np.ndarray:
     return array
 
 
+def _csr_validation_key(matrix: sparse.csr_matrix) -> tuple[Any, ...]:
+    return (
+        matrix.shape,
+        matrix.data.ctypes.data,
+        matrix.indices.ctypes.data,
+        matrix.indptr.ctypes.data,
+        matrix.data.size,
+        matrix.indices.size,
+        matrix.indptr.size,
+    )
+
+
 def _matrix(value: Any, index_dtype=np.int64, validate: bool = True) -> sparse.csr_matrix:
     if np.iscomplexobj(value):
         raise TypeError("A must be real")
@@ -97,10 +109,13 @@ def _matrix(value: Any, index_dtype=np.int64, validate: bool = True) -> sparse.c
         matrix = value
     else:
         matrix = sparse.csr_matrix(value, dtype=np.float64, copy=False)
-    try:
-        matrix.check_format(full_check=True)
-    except (TypeError, ValueError) as error:
-        raise ValueError(f"invalid CSR matrix: {error}") from error
+    validation_key = _csr_validation_key(matrix)
+    if getattr(matrix, "_mojo_scs_validation_key", None) != validation_key:
+        try:
+            matrix.check_format(full_check=True)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"invalid CSR matrix: {error}") from error
+        matrix._mojo_scs_validation_key = validation_key
     if not matrix.has_canonical_format:
         matrix = matrix.copy()
         matrix.sum_duplicates()
@@ -127,6 +142,7 @@ def _matrix(value: Any, index_dtype=np.int64, validate: bool = True) -> sparse.c
         matrix.indptr = np.ascontiguousarray(matrix.indptr, dtype=index_dtype)
         matrix.indices = np.ascontiguousarray(matrix.indices, dtype=index_dtype)
     matrix.data = np.ascontiguousarray(matrix.data, dtype=np.float64)
+    matrix._mojo_scs_validation_key = _csr_validation_key(matrix)
     return matrix
 
 

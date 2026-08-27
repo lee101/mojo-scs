@@ -109,11 +109,11 @@ against the corresponding NumPy/SciPy operation.
 
 | case | mojo-scs | upstream/reference | speedup |
 | --- | ---: | ---: | ---: |
-| nonnegative projection (2M) | 3.26 ms | 2.36 ms | 1.38x slower |
-| CSR matvec (900k nnz) | 4.84 ms | 3.27 ms | 1.48x slower |
-| bounded LP setup + solve (n=64) | 429.6 us | 567.1 us | 1.32x |
-| warm reusable QP solve (n=128) | 175.8 us | 194.6 us | 1.11x |
-| SOC setup + solve (q=96) | 955.2 us | 900.2 us | 1.06x slower |
+| nonnegative projection (2M) | 3.78 ms | 1.85 ms | 2.04x slower |
+| CSR matvec (900k nnz) | 3.41 ms | 2.77 ms | 1.23x slower |
+| bounded LP setup + solve (n=64) | 426.2 us | 507.8 us | 1.19x |
+| warm reusable QP solve (n=128) | 205.1 us | 225.2 us | 1.10x |
+| SOC setup + solve (q=96) | 1.12 ms | 1.06 ms | 1.06x slower |
 
 These are best-of-five timings from one run, not general performance
 guarantees. The core uses native-width SIMD with scalar tails, SIMD gathers
@@ -122,7 +122,12 @@ thresholds. Canonical SciPy CSR buffers keep their native int32 indices for
 direct kernels; solver workspaces normalize indices to int64 and allocate
 their buffers once.
 
-No GPU path is included.
+No GPU path is included. The measured optimization targets do not have enough
+arithmetic intensity to justify one: projection performs one comparison while
+reading and writing each float64 value, and CSR matvec performs two floating-
+point operations per nonzero while moving a value, an index, and irregular
+vector data. The benchmarked solver systems use the diagonal factorization
+fast path, where device transfers and launch synchronization would dominate.
 `pixi run bench` prints a fresh Markdown table and verifies that every timed
 solver result agrees numerically.
 
