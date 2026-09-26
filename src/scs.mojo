@@ -5,16 +5,12 @@ All storage belongs to the caller.  Sparse matrices use SciPy-compatible CSR:
 """
 
 from std.math import sqrt
-from max.algorithm import parallelize
 from std.sys.info import simd_width_of as simdwidthof
 
 comptime W = simdwidthof[DType.float64]()
 comptime FPtr = UnsafePointer[Float64, AnyOrigin[mut=True]]
 comptime IPtr = UnsafePointer[Int64, AnyOrigin[mut=True]]
 comptime I32Ptr = UnsafePointer[Int32, AnyOrigin[mut=True]]
-comptime PARALLEL_ROWS = 2_000_000
-comptime PARALLEL_VALUES = 8_000_000
-comptime PARALLEL_TASKS = 4
 
 
 def dot(a: FPtr, b: FPtr, n: Int) -> Float64:
@@ -77,26 +73,7 @@ def csr_matvec_range(
 def csr_matvec(
     indptr: IPtr, indices: IPtr, data: FPtr, x: FPtr, dst: FPtr, rows: Int
 ):
-    if rows < PARALLEL_ROWS:
-        csr_matvec_range(indptr, indices, data, x, dst, rows)
-        return
-    var chunk_size = (rows + PARALLEL_TASKS - 1) // PARALLEL_TASKS
-
-    @parameter
-    def work(task: Int):
-        var first = task * chunk_size
-        var end = min(first + chunk_size, rows)
-        if first < end:
-            csr_matvec_range(
-                indptr + first,
-                indices,
-                data,
-                x,
-                dst + first,
-                end - first,
-            )
-
-    parallelize[work](PARALLEL_TASKS, PARALLEL_TASKS)
+    csr_matvec_range(indptr, indices, data, x, dst, rows)
 
 
 def csr_matvec32_range(
@@ -121,26 +98,7 @@ def csr_matvec32_range(
 def csr_matvec32(
     indptr: I32Ptr, indices: I32Ptr, data: FPtr, x: FPtr, dst: FPtr, rows: Int
 ):
-    if rows < PARALLEL_ROWS:
-        csr_matvec32_range(indptr, indices, data, x, dst, rows)
-        return
-    var chunk_size = (rows + PARALLEL_TASKS - 1) // PARALLEL_TASKS
-
-    @parameter
-    def work(task: Int):
-        var first = task * chunk_size
-        var end = min(first + chunk_size, rows)
-        if first < end:
-            csr_matvec32_range(
-                indptr + first,
-                indices,
-                data,
-                x,
-                dst + first,
-                end - first,
-            )
-
-    parallelize[work](PARALLEL_TASKS, PARALLEL_TASKS)
+    csr_matvec32_range(indptr, indices, data, x, dst, rows)
 
 
 def csr_tmatvec(
@@ -339,46 +297,28 @@ def project_cone_copy(
         zero_i += 1
 
     var i = 0
-    if nonnegative < PARALLEL_VALUES:
-        while i + 4 * W <= nonnegative:
-            values.store(
-                zero + i, max(src.load[width=W](zero + i), zeros)
-            )
-            values.store(
-                zero + i + W,
-                max(src.load[width=W](zero + i + W), zeros),
-            )
-            values.store(
-                zero + i + 2 * W,
-                max(src.load[width=W](zero + i + 2 * W), zeros),
-            )
-            values.store(
-                zero + i + 3 * W,
-                max(src.load[width=W](zero + i + 3 * W), zeros),
-            )
-            i += 4 * W
-        while i + W <= nonnegative:
-            values.store(
-                zero + i, max(src.load[width=W](zero + i), zeros)
-            )
-            i += W
-    else:
-        var vectors = nonnegative // W
-        var chunk_size = (vectors + PARALLEL_TASKS - 1) // PARALLEL_TASKS
-
-        @parameter
-        def work(task: Int):
-            var first = task * chunk_size
-            var end = min(first + chunk_size, vectors)
-            for vector_i in range(first, end):
-                var i = vector_i * W
-                values.store(
-                    zero + i, max(src.load[width=W](zero + i), zeros)
-                )
-
-        parallelize[work](PARALLEL_TASKS, PARALLEL_TASKS)
-        i = vectors * W
-
+    while i + 4 * W <= nonnegative:
+        values.store(
+            zero + i, max(src.load[width=W](zero + i), zeros)
+        )
+        values.store(
+            zero + i + W,
+            max(src.load[width=W](zero + i + W), zeros),
+        )
+        values.store(
+            zero + i + 2 * W,
+            max(src.load[width=W](zero + i + 2 * W), zeros),
+        )
+        values.store(
+            zero + i + 3 * W,
+            max(src.load[width=W](zero + i + 3 * W), zeros),
+        )
+        i += 4 * W
+    while i + W <= nonnegative:
+        values.store(
+            zero + i, max(src.load[width=W](zero + i), zeros)
+        )
+        i += W
     while i < nonnegative:
         values[zero + i] = max(src[zero + i], 0.0)
         i += 1

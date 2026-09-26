@@ -116,11 +116,16 @@ against the corresponding NumPy/SciPy operation.
 | SOC setup + solve (q=96) | 1.12 ms | 1.06 ms | 1.06x slower |
 
 These are best-of-five timings from one run, not general performance
-guarantees. The core uses native-width SIMD with scalar tails, SIMD gathers
-for long sparse rows, and parallel execution only above internal size
-thresholds. Canonical SciPy CSR buffers keep their native int32 indices for
-direct kernels; solver workspaces normalize indices to int64 and allocate
-their buffers once.
+guarantees. The core uses native-width SIMD with scalar tails and SIMD gathers
+for long sparse rows. Every kernel is single-threaded: Mojo 1.2 removed closure
+capture, so the row-chunked sparse matvecs and the chunked nonnegative
+projection can no longer be fanned out from inside a `parallelize` body. They
+are the two most memory-bound kernels in the port -- two floating-point
+operations per nonzero for matvec, one comparison per float64 moved for
+projection -- so serial execution is the correct choice and the old size
+thresholds would only have added dispatch cost. Canonical SciPy CSR buffers keep
+their native int32 indices for direct kernels; solver workspaces normalize
+indices to int64 and allocate their buffers once.
 
 No GPU path is included. The measured optimization targets do not have enough
 arithmetic intensity to justify one: projection performs one comparison while
